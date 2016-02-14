@@ -25,6 +25,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.widget.Toast;
@@ -140,40 +141,72 @@ public class UpdateUtils {
             }
         }
 
-        if (sharedPrefs.getBoolean("3.4.0_1", true)) {
+        if (sharedPrefs.getBoolean("4.0.0", true)) {
             SharedPreferences.Editor e = sharedPrefs.edit();
-            e.putBoolean("3.4.0_1", false);
+            e.putBoolean("4.0.0", false);
 
             // show them all for now
             Set<String> set = new HashSet<String>();
-            set.add("0"); // timeline
-            set.add("1"); // mentions
-            set.add("2"); // dm's
-            set.add("3"); // discover
-            set.add("4"); // lists
-            set.add("5"); // favorite users
-            set.add("6"); // retweets
-            set.add("7"); // favorite Tweets
-            set.add("8"); // saved searches
+            set.add("0"); // activity
+            set.add("1"); // timeline
+            set.add("2"); // mentions
+            set.add("3"); // dm's
+            set.add("4"); // discover
+            set.add("5"); // lists
+            set.add("6"); // favorite users
+            set.add("7"); // retweets
+            set.add("8"); // favorite Tweets
+            set.add("9"); // saved searches
 
             e.putStringSet("drawer_elements_shown_1", set);
             e.putStringSet("drawer_elements_shown_2", set);
 
             // reset their pages to just home,
             String pageIdentifier = "account_" + 1 + "_page_";
-            e.putInt(pageIdentifier + 1, AppSettings.PAGE_TYPE_HOME);
-            e.putInt(pageIdentifier + 2, AppSettings.PAGE_TYPE_MENTIONS);
-            e.putInt(pageIdentifier + 3, AppSettings.PAGE_TYPE_DMS);
+            e.putInt(pageIdentifier + 1, AppSettings.PAGE_TYPE_ACTIVITY);
+            e.putInt(pageIdentifier + 2, AppSettings.PAGE_TYPE_HOME);
+            e.putInt(pageIdentifier + 3, AppSettings.PAGE_TYPE_MENTIONS);
+            e.putInt(pageIdentifier + 4, AppSettings.PAGE_TYPE_DMS);
 
             pageIdentifier = "account_" + 2 + "_page_";
-            e.putInt(pageIdentifier + 1, AppSettings.PAGE_TYPE_HOME);
-            e.putInt(pageIdentifier + 2, AppSettings.PAGE_TYPE_MENTIONS);
-            e.putInt(pageIdentifier + 3, AppSettings.PAGE_TYPE_DMS);
+            e.putInt(pageIdentifier + 1, AppSettings.PAGE_TYPE_ACTIVITY);
+            e.putInt(pageIdentifier + 2, AppSettings.PAGE_TYPE_HOME);
+            e.putInt(pageIdentifier + 3, AppSettings.PAGE_TYPE_MENTIONS);
+            e.putInt(pageIdentifier + 4, AppSettings.PAGE_TYPE_DMS);
 
-            e.putInt("default_timeline_page_" + 1, 0);
-            e.putInt("default_timeline_page_" + 2, 0);
+            e.putInt("default_timeline_page_" + 1, 1);
+            e.putInt("default_timeline_page_" + 2, 1);
 
             e.commit();
+        }
+
+        if (!sharedPrefs.getBoolean("displayed_upgrade_message", false) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            sharedPrefs.edit().putBoolean("displayed_upgrade_message", true).commit();
+
+            new AlertDialog.Builder(context)
+                    .setTitle("Love Talon?")
+                    .setMessage("Consider upgrading to the Material Design version of the app! All the latest design elements, in the same Twitter app you have come to enjoy every day.\n\n" +
+                            "This 'classic' version of the app will continue to receive all the new features that are possible, just without the visual updates.")
+                    .setPositiveButton("Upgrade", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            new WebIntentBuilder(context)
+                                    .setShouldForceExternal(true)
+                                    .setUrl("https://play.google.com/store/apps/details?id=com.klinker.android.twitter_l")
+                                    .build().start();
+                        }
+                    })
+                    .setNegativeButton("Learn More", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            new WebIntentBuilder(context)
+                                    .setShouldForceExternal(true)
+                                    .setUrl("https://plus.google.com/+LukeKlinker/posts/KG4AcH3YA2U")
+                                    .build().start();
+                        }
+                    })
+                    .create()
+                    .show();
         }
     }
 }

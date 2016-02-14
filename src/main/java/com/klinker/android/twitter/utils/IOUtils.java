@@ -34,13 +34,10 @@ import com.klinker.android.twitter.R;
 import com.klinker.android.twitter.data.sq_lite.*;
 import com.klinker.android.twitter.settings.AppSettings;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.Date;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Stack;
@@ -71,6 +68,38 @@ public class IOUtils {
         values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
         context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
         Toast.makeText(context, context.getResources().getString(R.string.save_image), Toast.LENGTH_SHORT).show();
+
+        return Uri.fromFile(file);
+    }
+
+    public static final Uri saveVideo(String videoUrl) throws Exception {
+
+        File myDir = new File(Environment.getExternalStorageDirectory() + "/Talon");
+        myDir.mkdirs();
+
+        final File file = new File(Environment.getExternalStorageDirectory(), "Talon/Video-" + (new Date()).getTime() + ".mp4");
+        if (!file.createNewFile()) {
+            throw new RuntimeException("Cannot download video - error creating file");
+        }
+
+        URL url = new URL(videoUrl);
+        URLConnection connection = url.openConnection();
+        connection.setReadTimeout(5000);
+        connection.setConnectTimeout(30000);
+
+        InputStream is = connection.getInputStream();
+        BufferedInputStream inStream = new BufferedInputStream(is, 1024 * 5);
+        FileOutputStream outStream = new FileOutputStream(file);
+
+        byte[] buffer = new byte[1024 * 5];
+        int len;
+        while ((len = inStream.read(buffer)) != -1) {
+            outStream.write(buffer, 0, len);
+        }
+
+        outStream.flush();
+        outStream.close();
+        inStream.close();
 
         return Uri.fromFile(file);
     }
@@ -365,6 +394,39 @@ public class IOUtils {
 
             timeline.close();
 
+            ActivityDataSource activity = ActivityDataSource.getInstance(context);
+            Cursor actCurs = activity.getCursor(account);
+
+            Log.v("trimming", "activity size: " + actCurs.getCount());
+            Log.v("trimming", "activity settings size: " + 200);
+            if (actCurs.getCount() > 200) {
+                int toDelete = actCurs.getCount() - 200;
+                if(actCurs.moveToFirst()) {
+                    do {
+                        activity.deleteItem(actCurs.getLong(actCurs.getColumnIndex(ActivitySQLiteHelper.COLUMN_ID)));
+                        toDelete--;
+                    } while (timeline.moveToNext() &&  toDelete > 0);
+                }
+            }
+
+            actCurs.close();
+            FavoriteTweetsDataSource favtweets = FavoriteTweetsDataSource.getInstance(context);
+            favtweets.deleteDups(settings.currentAccount);
+
+            timeline = favtweets.getCursor(account);
+            Log.v("trimming", "favtweets size: " + timeline.getCount());
+            Log.v("trimming", "favtweets settings size: " + 200);
+            if (timeline.getCount() > 200) {
+
+                if(timeline.moveToPosition(timeline.getCount() - 200)) {
+                    do {
+                        favtweets.deleteTweet(timeline.getLong(timeline.getColumnIndex(FavoriteTweetsSQLiteHelper.COLUMN_TWEET_ID)));
+                    } while (timeline.moveToPrevious());
+                }
+            }
+
+            timeline.close();
+
             return true;
         } catch (Exception e) {
             e.printStackTrace();
@@ -415,5 +477,11 @@ public class IOUtils {
         }
 
         return ret;
+    }
+
+    public byte[] convertToByteArray(Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        return stream.toByteArray();
     }
 }

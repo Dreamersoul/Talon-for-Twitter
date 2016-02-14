@@ -143,6 +143,7 @@
         <item>@string/take_picture</item>
         <item>@string/from_file</item>
         <item>@string/attach_gif</item>
+        <!--<item>@string/attach_video</item>-->
     </string-array>
 
     <string-array name="font_type">
@@ -157,6 +158,18 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
+    </string-array>
+
+    <string-array name="quote_style">
+        <item>@string/quote_style_twitter</item>
+        <item>@string/quote_style_talon</item>
+        <item>@string/quote_style_rt</item>
+    </string-array>
+
+    <string-array name="quote_style_inserted">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
     </string-array>
 
     <string-array name="alert_types">
@@ -177,6 +190,7 @@
         <item>@string/timeline</item>
         <item>@string/mentions</item>
         <item>@string/direct_messages</item>
+        <item>@string/activity</item>
     </string-array>
 
     <string-array name="interactions_notifications">

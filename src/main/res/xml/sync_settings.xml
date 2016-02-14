@@ -41,11 +41,26 @@
             android:dependency="push_notifications"
             />
 
+        <CheckBoxPreference
+            android:key="show_pull_notification"
+            android:title="@string/show_pull_notification"
+            android:summary="@string/show_pull_notification_summary"
+            android:defaultValue="true"
+            android:dependency="push_notifications"
+            />
+
         <Preference
             android:key="fill_gaps"
             android:title="@string/fill_gaps"
             android:summary="@string/fill_gaps_summary"
             android:dependency="push_notifications"
+            />
+
+        <CheckBoxPreference
+            android:key="interaction_drawer"
+            android:title="@string/use_interaction_drawer"
+            android:dependency="push_notifications"
+            android:defaultValue="true"
             />
 
     </PreferenceCategory>
@@ -83,6 +98,14 @@
         <ListPreference
             android:key="dm_sync_interval"
             android:title="@string/dm_sync_interval"
+            android:defaultValue="0"
+            android:entries="@array/sync_interval"
+            android:entryValues="@array/sync_interval_inserted"
+            />
+
+        <ListPreference
+            android:key="activity_sync_interval"
+            android:title="@string/activity_sync_interval"
             android:defaultValue="0"
             android:entries="@array/sync_interval"
             android:entryValues="@array/sync_interval_inserted"

@@ -31,7 +31,6 @@ import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.location.Address;
 import android.location.Geocoder;
-import android.media.Image;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -75,9 +74,9 @@ import com.klinker.android.twitter.ui.compose.ComposeActivity;
 import com.klinker.android.twitter.ui.compose.ComposeSecAccActivity;
 import com.klinker.android.twitter.ui.profile_viewer.ProfilePager;
 import com.klinker.android.twitter.ui.tweet_viewer.ViewPictures;
-import com.klinker.android.twitter.ui.tweet_viewer.ViewRetweeters;
+import com.klinker.android.twitter.ui.tweet_viewer.users_popup.ViewUsersPopup;
 import com.klinker.android.twitter.manipulations.EmojiKeyboard;
-import com.klinker.android.twitter.manipulations.PhotoViewerDialog;
+import com.klinker.android.twitter.manipulations.photo_viewer.PhotoViewerActivity;
 import com.klinker.android.twitter.manipulations.QustomDialogBuilder;
 import com.klinker.android.twitter.utils.EmojiUtils;
 import com.klinker.android.twitter.utils.ImageUtils;
@@ -96,10 +95,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import twitter4j.GeoLocation;
-import twitter4j.ResponseList;
-import twitter4j.Status;
-import twitter4j.Twitter;
+import twitter4j.*;
 import uk.co.senab.photoview.PhotoViewAttacher;
 
 public class TweetFragment extends Fragment {
@@ -474,7 +470,7 @@ public class TweetFragment extends Fragment {
                 @Override
                 public void onClick(View view) {
                     //open up the activity to see who retweeted it
-                    Intent viewRetweeters = new Intent(context, ViewRetweeters.class);
+                    Intent viewRetweeters = new Intent(context, ViewUsersPopup.class);
                     viewRetweeters.putExtra("id", tweetId);
                     startActivity(viewRetweeters);
                 }
@@ -487,10 +483,16 @@ public class TweetFragment extends Fragment {
                 public void onClick(View view) {
                     String text = tweet;
 
-                    if (!settings.preferRT) {
-                        text = "\"@" + screenName + ": " + text + "\" ";
-                    } else {
-                        text = " RT @" + screenName + ": " + text;
+                    switch (settings.quoteStyle) {
+                        case AppSettings.QUOTE_STYLE_TWITTER:
+                            text = " " + "https://twitter.com/" + screenName + "/status/" + tweetId;
+                            break;
+                        case AppSettings.QUOTE_STYLE_TALON:
+                            text = "\"@" + screenName + ": " + text + "\" ";
+                            break;
+                        case AppSettings.QUOTE_STYLE_RT:
+                            text = " RT @" + screenName + ": " + text;
+                            break;
                     }
 
                     Intent intent;
@@ -564,7 +566,7 @@ public class TweetFragment extends Fragment {
             profilePic.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    context.startActivity(new Intent(context, PhotoViewerDialog.class).putExtra("url", webpage));
+                    context.startActivity(new Intent(context, PhotoViewerActivity.class).putExtra("url", webpage));
                 }
             });
         } else {
@@ -581,7 +583,7 @@ public class TweetFragment extends Fragment {
             mAttacher.setOnViewTapListener(new PhotoViewAttacher.OnViewTapListener() {
                 @Override
                 public void onViewTap(View view, float x, float y) {
-                    context.startActivity(new Intent(context, PhotoViewerDialog.class).putExtra("url", webpage));
+                    context.startActivity(new Intent(context, PhotoViewerActivity.class).putExtra("url", webpage));
                 }
             });
 
@@ -713,14 +715,48 @@ public class TweetFragment extends Fragment {
         favoriteButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                favoriteStatus(favoriteCount, favoriteButton, tweetId);
+                if (isFavorited || !settings.crossAccActions) {
+                    favoriteStatus(favoriteCount, favoriteButton, tweetId, secondAcc ? TYPE_ACC_TWO : TYPE_ACC_ONE);
+                } else if (settings.crossAccActions) {
+                    // dialog for favoriting
+                    String[] options = new String[3];
+
+                    options[0] = "@" + settings.myScreenName;
+                    options[1] = "@" + settings.secondScreenName;
+                    options[2] = context.getString(R.string.both_accounts);
+
+                    new AlertDialog.Builder(context)
+                            .setItems(options, new DialogInterface.OnClickListener() {
+                                public void onClick(final DialogInterface dialog, final int item) {
+                                    favoriteStatus(favoriteCount, favoriteButton, tweetId, item + 1);
+                                }
+                            })
+                            .create().show();
+                }
             }
         });
 
         retweetButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                retweetStatus(retweetCount, tweetId, retweetButton);
+                if (!settings.crossAccActions) {
+                    retweetStatus(retweetCount, tweetId, retweetButton, secondAcc ? TYPE_ACC_TWO : TYPE_ACC_ONE);
+                } else {
+                    // dialog for favoriting
+                    String[] options = new String[3];
+
+                    options[0] = "@" + settings.myScreenName;
+                    options[1] = "@" + settings.secondScreenName;
+                    options[2] = context.getString(R.string.both_accounts);
+
+                    new AlertDialog.Builder(context)
+                            .setItems(options, new DialogInterface.OnClickListener() {
+                                public void onClick(final DialogInterface dialog, final int item) {
+                                    retweetStatus(retweetCount, tweetId, retweetButton, item + 1);
+                                }
+                            })
+                            .create().show();
+                }
             }
         });
 
@@ -1464,11 +1500,15 @@ public class TweetFragment extends Fragment {
         }).start();
     }
 
-    public void favoriteStatus(final TextView favs, final View favButton, final long tweetId) {
-        if (!isFavorited) {
-            Toast.makeText(context, getResources().getString(R.string.favoriting_status), Toast.LENGTH_SHORT).show();
-        } else {
+    private final int TYPE_ACC_ONE = 1;
+    private final int TYPE_ACC_TWO = 2;
+    private final int TYPE_BOTH_ACC = 3;
+
+    public void favoriteStatus(final TextView favs, final View favButton, final long tweetId, final int type) {
+        if (isFavorited) {
             Toast.makeText(context, getResources().getString(R.string.removing_favorite), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(context, getResources().getString(R.string.favoriting_status), Toast.LENGTH_SHORT).show();
         }
 
         new Thread(new Runnable() {
@@ -1476,11 +1516,33 @@ public class TweetFragment extends Fragment {
             public void run() {
 
                 try {
-                    Twitter twitter =  getTwitter();
-                    if (isFavorited) {
-                        twitter.destroyFavorite(tweetId);
+                    Twitter twitter = null;
+                    Twitter secTwitter = null;
+                    if (type == TYPE_ACC_ONE) {
+                        twitter = Utils.getTwitter(context, settings);
+                    } else if (type == TYPE_ACC_TWO) {
+                        secTwitter = Utils.getSecondTwitter(context);
                     } else {
-                        twitter.createFavorite(tweetId);
+                        twitter = Utils.getTwitter(context, settings);
+                        secTwitter = Utils.getSecondTwitter(context);
+                    }
+
+                    if (isFavorited && twitter != null) {
+                        twitter.destroyFavorite(tweetId);
+                    } else if (twitter != null) {
+                        try {
+                            twitter.createFavorite(tweetId);
+                        } catch (TwitterException e) {
+                            // already been favorited by this account
+                        }
+                    }
+
+                    if (secTwitter != null) {
+                        try {
+                            secTwitter.createFavorite(tweetId);
+                        } catch (TwitterException e) {
+
+                        }
                     }
 
                     ((Activity)context).runOnUiThread(new Runnable() {
@@ -1501,15 +1563,46 @@ public class TweetFragment extends Fragment {
         }).start();
     }
 
-    public void retweetStatus(final TextView retweetCount, final long tweetId, final View retweetButton) {
+    public void retweetStatus(final TextView retweetCount, final long tweetId, final View retweetButton, final int type) {
         Toast.makeText(context, getResources().getString(R.string.retweeting_status), Toast.LENGTH_SHORT).show();
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    Twitter twitter =  getTwitter();
-                    twitter.retweetStatus(tweetId);
+
+                    // if they have a protected account, we want to still be able to retweet their retweets
+                    long idToRetweet = tweetId;
+                    if (status != null && status.isRetweet()) {
+                        idToRetweet = status.getRetweetedStatus().getId();
+                    }
+
+                    Twitter twitter = null;
+                    Twitter secTwitter = null;
+                    if (type == TYPE_ACC_ONE) {
+                        twitter = Utils.getTwitter(context, settings);
+                    } else if (type == TYPE_ACC_TWO) {
+                        secTwitter = Utils.getSecondTwitter(context);
+                    } else {
+                        twitter = Utils.getTwitter(context, settings);
+                        secTwitter = Utils.getSecondTwitter(context);
+                    }
+
+                    if (twitter != null) {
+                        try {
+                            twitter.retweetStatus(idToRetweet);
+                        } catch (TwitterException e) {
+
+                        }
+                    }
+
+                    if (secTwitter != null) {
+                        try {
+                            secTwitter.retweetStatus(idToRetweet);
+                        } catch (TwitterException e) {
+
+                        }
+                    }
 
                     ((Activity)context).runOnUiThread(new Runnable() {
                         @Override

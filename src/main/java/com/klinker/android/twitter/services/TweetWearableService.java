@@ -41,7 +41,7 @@ import com.klinker.android.twitter.data.sq_lite.HomeSQLiteHelper;
 import com.klinker.android.twitter.settings.AppSettings;
 import com.klinker.android.twitter.transaction.KeyProperties;
 import com.klinker.android.twitter.ui.launcher_page.HandleScrollService;
-import com.klinker.android.twitter.util.IoUtils;
+import com.klinker.android.twitter.utils.IOUtils;
 import com.klinker.android.twitter.utils.ImageUtils;
 import com.klinker.android.twitter.utils.Utils;
 import com.klinker.android.twitter.utils.WearableUtils;
@@ -49,15 +49,14 @@ import com.klinker.android.twitter.utils.api_helper.TweetMarkerHelper;
 
 
 import java.io.BufferedInputStream;
-import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
+import twitter4j.StatusUpdate;
 import uk.co.senab.bitmapcache.BitmapLruCache;
-import uk.co.senab.bitmapcache.CacheableBitmapDrawable;
 
 public class TweetWearableService extends WearableListenerService {
 
@@ -102,13 +101,15 @@ public class TweetWearableService extends WearableListenerService {
 
             Cursor tweets = HomeDataSource.getInstance(this).getWearCursor(settings.currentAccount);
             PutDataMapRequest dataMap = PutDataMapRequest.create(KeyProperties.PATH);
-            ArrayList<String> titles = new ArrayList<String>();
+            ArrayList<String> names = new ArrayList<String>();
+            ArrayList<String> screennames = new ArrayList<String>();
             ArrayList<String> bodies = new ArrayList<String>();
             ArrayList<String> ids = new ArrayList<String>();
 
             if (tweets != null && tweets.moveToLast()) {
                 do {
                     String name = tweets.getString(tweets.getColumnIndex(HomeSQLiteHelper.COLUMN_NAME));
+                    String screenname = tweets.getString(tweets.getColumnIndex(HomeSQLiteHelper.COLUMN_SCREEN_NAME));
                     String pic = tweets.getString(tweets.getColumnIndex(HomeSQLiteHelper.COLUMN_PRO_PIC));
                     String body = tweets.getString(tweets.getColumnIndex(HomeSQLiteHelper.COLUMN_TEXT));
                     long id = tweets.getLong(tweets.getColumnIndex(HomeSQLiteHelper.COLUMN_TWEET_ID));
@@ -120,7 +121,8 @@ public class TweetWearableService extends WearableListenerService {
                         retweeter = "";
                     }
 
-                    titles.add(name);
+                    screennames.add(screenname);
+                    names.add(name);
                     if (TextUtils.isEmpty(retweeter)) {
                         body = pic + KeyProperties.DIVIDER + body + KeyProperties.DIVIDER;
                     } else {
@@ -135,7 +137,8 @@ public class TweetWearableService extends WearableListenerService {
                 tweets.close();
             }
 
-            dataMap.getDataMap().putStringArrayList(KeyProperties.KEY_TITLE, titles);
+            dataMap.getDataMap().putStringArrayList(KeyProperties.KEY_USER_NAME, names);
+            dataMap.getDataMap().putStringArrayList(KeyProperties.KEY_USER_SCREENNAME, screennames);
             dataMap.getDataMap().putStringArrayList(KeyProperties.KEY_TWEET, bodies);
             dataMap.getDataMap().putStringArrayList(KeyProperties.KEY_ID, ids);
 
@@ -196,6 +199,57 @@ public class TweetWearableService extends WearableListenerService {
                 }
             }, 5000);
 
+        } else if (message.startsWith(KeyProperties.REQUEST_FAVORITE)) {
+            final long tweetId = Long.parseLong(message.split(KeyProperties.DIVIDER)[1]);
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Utils.getTwitter(TweetWearableService.this, AppSettings.getInstance(TweetWearableService.this)).createFavorite(tweetId);
+                    } catch (Exception e) {
+                    }
+                }
+            }).start();
+        } else if (message.startsWith(KeyProperties.REQUEST_COMPOSE)) {
+            final String status = message.split(KeyProperties.DIVIDER)[1];
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Utils.getTwitter(TweetWearableService.this, AppSettings.getInstance(TweetWearableService.this)).updateStatus(status);
+                    } catch (Exception e) { }
+                }
+            }).start();
+        } else if (message.startsWith(KeyProperties.REQUEST_RETWEET)) {
+            final long tweetId = Long.parseLong(message.split(KeyProperties.DIVIDER)[1]);
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Utils.getTwitter(TweetWearableService.this, AppSettings.getInstance(TweetWearableService.this)).retweetStatus(tweetId);
+                    } catch (Exception e) {
+                    }
+                }
+            }).start();
+        } else if (message.startsWith(KeyProperties.REQUEST_REPLY)) {
+            final String tweet = message.split(KeyProperties.DIVIDER)[1];
+            final long replyToId = Long.parseLong(message.split(KeyProperties.DIVIDER)[2]);
+
+            final StatusUpdate status = new StatusUpdate(tweet);
+            status.setInReplyToStatusId(replyToId);
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Utils.getTwitter(TweetWearableService.this, AppSettings.getInstance(TweetWearableService.this))
+                                .updateStatus(status);
+                    } catch (Exception e) { }
+                }
+            }).start();
         } else if (message.startsWith(KeyProperties.REQUEST_IMAGE)) {
             final String url = message.split(KeyProperties.DIVIDER)[1];
             Bitmap image = null;
@@ -232,12 +286,7 @@ public class TweetWearableService extends WearableListenerService {
 
                             }
 
-                            if (AppSettings.getInstance(TweetWearableService.this).roundContactImages) {
-                                image = ImageUtils.getCircle(image, TweetWearableService.this);
-                            }
-
                             cache.put(url, image);
-
                             image = adjustImage(image);
 
                             sendImage(image, url, wearableUtils, googleApiClient);
@@ -254,7 +303,7 @@ public class TweetWearableService extends WearableListenerService {
 
     public void sendImage(Bitmap image, String url, WearableUtils wearableUtils, GoogleApiClient googleApiClient) {
         PutDataMapRequest dataMap = PutDataMapRequest.create(KeyProperties.PATH);
-        byte[] bytes = new IoUtils().convertToByteArray(image);
+        byte[] bytes = new IOUtils().convertToByteArray(image);
         dataMap.getDataMap().putByteArray(KeyProperties.KEY_IMAGE_DATA, bytes);
         dataMap.getDataMap().putString(KeyProperties.KEY_IMAGE_NAME, url);
         for (String node : wearableUtils.getNodes(googleApiClient)) {

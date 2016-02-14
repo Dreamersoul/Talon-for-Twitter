@@ -76,10 +76,19 @@ public class AppSettings {
     public static final int PAGE_TYPE_MENTIONS = 6;
     public static final int PAGE_TYPE_DMS = 7;
     public static final int PAGE_TYPE_SECOND_MENTIONS = 8;
+    public static final int PAGE_TYPE_WORLD_TRENDS = 9;
+    public static final int PAGE_TYPE_LOCAL_TRENDS = 10;
+    public static final int PAGE_TYPE_SAVED_SEARCH = 11;
+    public static final int PAGE_TYPE_ACTIVITY = 12;
+    public static final int PAGE_TYPE_FAVORITE_STATUS = 13;
 
     public static final int LAYOUT_TALON = 0;
     public static final int LAYOUT_HANGOUT = 1;
     public static final int LAYOUT_FULL_SCREEN = 2;
+
+    public static final int QUOTE_STYLE_TWITTER = 0;
+    public static final int QUOTE_STYLE_TALON = 1;
+    public static final int QUOTE_STYLE_RT = 2;
 
     public String authenticationToken;
     public String authenticationTokenSecret;
@@ -118,7 +127,6 @@ public class AppSettings {
     public boolean pushNotifications;
     public boolean inAppBrowser;
     public boolean showBoth;
-    public boolean preferRT;
     public boolean absoluteDate;
     public boolean useToast;
     public boolean autoInsertHashtags;
@@ -133,6 +141,8 @@ public class AppSettings {
     public boolean alwaysMobilize;
     public boolean mobilizeOnData;
     public boolean preCacheImages;
+    public boolean crossAccActions;
+    public boolean useInteractionDrawer;
 
     // notifications
     public boolean timelineNot;
@@ -141,6 +151,7 @@ public class AppSettings {
     public boolean followersNot;
     public boolean favoritesNot;
     public boolean retweetNot;
+    public boolean activityNot;
     public String ringtone;
 
     // theme stuff
@@ -168,15 +179,17 @@ public class AppSettings {
     public int mentionsSize;
     public int dmSize;
     public int pageToOpen;
+    public int numberOfAccounts;
+    public int quoteStyle;
 
     public long timelineRefresh;
     public long mentionsRefresh;
     public long dmRefresh;
+    public long activityRefresh;
     public long myId;
 
 
     public AppSettings(Context context) {
-        Log.v("talon_settings", "getting talon settings");
 
         sharedPrefs = context.getSharedPreferences("com.klinker.android.twitter_world_preferences",
                 Context.MODE_WORLD_READABLE + Context.MODE_WORLD_WRITEABLE);
@@ -243,7 +256,6 @@ public class AppSettings {
         favoritesNot = sharedPrefs.getBoolean("favorite_notifications", true);
         retweetNot = sharedPrefs.getBoolean("retweet_notifications", true);
         followersNot = sharedPrefs.getBoolean("follower_notifications", true);
-        preferRT = sharedPrefs.getBoolean("prefer_rt", false);
         absoluteDate = sharedPrefs.getBoolean("absolute_date", false);
         useToast = sharedPrefs.getBoolean("use_toast", true);
         autoInsertHashtags = sharedPrefs.getBoolean("auto_insert_hashtags", false);
@@ -254,6 +266,9 @@ public class AppSettings {
         floatingCompose = sharedPrefs.getBoolean("floating_compose", true);
         openKeyboard = sharedPrefs.getBoolean("open_keyboard", false);
         preCacheImages = sharedPrefs.getBoolean("pre_cache_images", false);
+        crossAccActions = sharedPrefs.getBoolean("fav_rt_multiple_accounts", true);
+        activityNot = sharedPrefs.getBoolean("activity_notifications", true);
+        useInteractionDrawer = sharedPrefs.getBoolean("interaction_drawer", true);
 
         // set up tweetmarker
         String val = sharedPrefs.getString("tweetmarker_options", "0");
@@ -279,10 +294,10 @@ public class AppSettings {
         }
 
         ringtone = defaultPrefs.getString("ringtone", RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION).toString());
-        Log.v("talon_ringtone", ringtone);
 
         if (!pushNotifications) {
             liveStreaming = false;
+            useInteractionDrawer = false;
         }
 
         if (liveStreaming) {
@@ -306,11 +321,13 @@ public class AppSettings {
         mentionsSize = Integer.parseInt(sharedPrefs.getString("mentions_size", "100"));
         dmSize = Integer.parseInt(sharedPrefs.getString("dm_size", "100"));
         pageToOpen = Integer.parseInt(sharedPrefs.getString("viewer_page", "0"));
+        quoteStyle = Integer.parseInt(sharedPrefs.getString("quote_style", "0"));
 
         // Longs
         timelineRefresh = Long.parseLong(sharedPrefs.getString("timeline_sync_interval", "0"));
         mentionsRefresh = Long.parseLong(sharedPrefs.getString("mentions_sync_interval", "0"));
         dmRefresh = Long.parseLong(sharedPrefs.getString("dm_sync_interval", "0"));
+        activityRefresh = Long.parseLong(sharedPrefs.getString("activity_sync_interval", "0"));
 
         if (sharedPrefs.getBoolean("night_mode", false)) {
             int nightStartHour = sharedPrefs.getInt("night_start_hour", 22);
@@ -447,16 +464,16 @@ public class AppSettings {
             translateProfileHeader = true;
         }
 
-        int count = 0;
         if (sharedPrefs.getBoolean("is_logged_in_1", false)) {
-            count++;
+            numberOfAccounts++;
         }
         if (sharedPrefs.getBoolean("is_logged_in_2", false)) {
-            count++;
+            numberOfAccounts++;
         }
 
-        if(count != 2) {
+        if(numberOfAccounts != 2) {
             syncSecondMentions = false;
+            crossAccActions = false;
         }
     }
 
@@ -521,7 +538,6 @@ public class AppSettings {
         favoritesNot = sharedPrefs.getBoolean("favorite_notifications", true);
         retweetNot = sharedPrefs.getBoolean("retweet_notifications", true);
         followersNot = sharedPrefs.getBoolean("follower_notifications", true);
-        preferRT = sharedPrefs.getBoolean("prefer_rt", false);
         absoluteDate = sharedPrefs.getBoolean("absolute_date", false);
         useToast = sharedPrefs.getBoolean("use_toast", true);
         autoInsertHashtags = sharedPrefs.getBoolean("auto_insert_hashtags", false);
@@ -583,7 +599,7 @@ public class AppSettings {
         mentionsSize = Integer.parseInt(sharedPrefs.getString("mentions_size", "100"));
         dmSize = Integer.parseInt(sharedPrefs.getString("dm_size", "100"));
         pageToOpen = Integer.parseInt(sharedPrefs.getString("viewer_page", "0"));
-
+        quoteStyle = Integer.parseInt(sharedPrefs.getString("quote_style", "0"));
 
         // Longs
         timelineRefresh = Long.parseLong(sharedPrefs.getString("timeline_sync_interval", "0"));

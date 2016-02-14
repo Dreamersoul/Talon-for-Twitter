@@ -36,12 +36,14 @@ import android.graphics.Point;
 import android.graphics.drawable.ColorDrawable;
 import android.location.Location;
 import android.media.ExifInterface;
+import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Vibrator;
+import android.provider.MediaStore;
 import android.support.v4.app.NotificationCompat;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -66,8 +68,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GooglePlayServicesClient;
-import com.google.android.gms.location.LocationClient;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.LocationServices;
 import com.klinker.android.twitter.R;
 import com.klinker.android.twitter.data.sq_lite.HashtagDataSource;
 import com.klinker.android.twitter.data.sq_lite.QueuedDataSource;
@@ -100,12 +102,12 @@ import twitter4j.*;
 import uk.co.senab.photoview.PhotoViewAttacher;
 
 public abstract class Compose extends Activity implements
-        GooglePlayServicesClient.ConnectionCallbacks,
-        GooglePlayServicesClient.OnConnectionFailedListener {
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener {
 
     private static final boolean DEBUG = false;
 
-    public LocationClient mLocationClient;
+    public GoogleApiClient mGoogleApiClient;
     public AppSettings settings;
     public Context context;
     public SharedPreferences sharedPrefs;
@@ -173,6 +175,16 @@ public abstract class Compose extends Activity implements
         }
     };
 
+    protected synchronized void buildGoogleApiClient() {
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
+
+        mGoogleApiClient.connect();
+    }
+
     @Override
     public void finish() {
         super.finish();
@@ -212,8 +224,7 @@ public abstract class Compose extends Activity implements
 
         currentAccount = sharedPrefs.getInt("current_account", 1);
 
-        mLocationClient = new LocationClient(context, this, this);
-        mLocationClient.connect();
+        buildGoogleApiClient();
 
         Utils.setUpPopupTheme(context, settings);
         setUpWindow();
@@ -221,11 +232,9 @@ public abstract class Compose extends Activity implements
         setUpActionBar();
         setUpReplyText();
 
-        if (reply.getText().toString().contains(" RT @")) {
+        if (reply.getText().toString().contains(" RT @") || reply.getText().toString().contains("/status/")) {
             reply.setSelection(0);
         }
-
-        //Utils.setActionBar(context, false);
 
         if (getIntent().getBooleanExtra("start_attach", false)) {
             attachButton.performClick();
@@ -245,7 +254,7 @@ public abstract class Compose extends Activity implements
                 String text = reply.getText().toString();
 
                 try {
-                    if (!android.text.TextUtils.isEmpty(text) && !text.startsWith(" RT @")) {
+                    if (!android.text.TextUtils.isEmpty(text) && !(text.startsWith(" RT @") || text.contains("/status/"))) {
                         //text = text.replaceAll("  ", " ");
 
                         reply.setText(text);
@@ -295,6 +304,14 @@ public abstract class Compose extends Activity implements
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
+                        if (Compose.this instanceof ComposeDMActivity) {
+                            boolean close = doneClick();
+                            if (close) {
+                                onBackPressed();
+                            }
+
+                            return;
+                        }
                         if (Integer.parseInt(charRemaining.getText().toString()) < 0 && settings.twitlonger) {
                             new AlertDialog.Builder(context)
                                     .setTitle(context.getResources().getString(R.string.tweet_to_long))
@@ -646,10 +663,14 @@ public abstract class Compose extends Activity implements
         NotificationCompat.Builder mBuilder =
                 new NotificationCompat.Builder(this)
                         .setSmallIcon(R.drawable.ic_stat_icon)
-                        .setContentTitle(getResources().getString(R.string.sending_tweet))
-                        //.setTicker(getResources().getString(R.string.sending_tweet))
                         .setOngoing(true)
                         .setProgress(100, 0, true);
+
+        if (Compose.this instanceof ComposeDMActivity) {
+            mBuilder.setContentTitle(getResources().getString(R.string.sending_direct_message));
+        } else {
+            mBuilder.setContentTitle(getResources().getString(R.string.sending_tweet));
+        }
 
         Intent resultIntent = new Intent(this, MainActivity.class);
 
@@ -699,15 +720,18 @@ public abstract class Compose extends Activity implements
 
     }
 
+    Location mLastLocation;
+
     @Override
     public void onConnected(Bundle bundle) {
         Log.v("location", "connected");
+        mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
+                mGoogleApiClient);
     }
 
     @Override
-    public void onDisconnected() {
-        //Toast.makeText(context, getResources().getString(R.string.location_disconnected), Toast.LENGTH_SHORT).show();
-        Log.v("location", "disconnected");
+    public void onConnectionSuspended(int i) {
+
     }
 
     @Override
@@ -718,17 +742,21 @@ public abstract class Compose extends Activity implements
 
     @Override
     public void onStop() {
-        mLocationClient.disconnect();
+        mGoogleApiClient.disconnect();
         super.onStop();
     }
 
     public static final int SELECT_PHOTO = 100;
     public static final int CAPTURE_IMAGE = 101;
     public static final int SELECT_GIF = 102;
+    public static final int SELECT_VIDEO = 103;
     public static final int PWICCER = 420;
 
     public boolean pwiccer = false;
 
+    public String attachmentType = "";
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode,
                                     Intent imageReturnedIntent) {
         Log.v("talon_image_attach", "got the result, code: " + requestCode);
@@ -845,12 +873,41 @@ public abstract class Compose extends Activity implements
 
                         String filePath = IOUtils.getPath(selectedImage, context);
 
-                        Log.v("talon_compose_pic", "path to image on sd card: " + filePath);
+                        Log.v("talon_compose_pic", "path to gif on sd card: " + filePath);
 
                         attachImage[0].setImageURI(selectedImage);
                         attachImage[0].setVisibility(View.VISIBLE);
                         attachedUri[0] = selectedImage.toString();
                         imagesAttached = 1;
+
+                        attachmentType = "animated_gif";
+
+                        attachButton.setEnabled(false);
+                    } catch (Throwable e) {
+                        e.printStackTrace();
+                        Toast.makeText(context, getResources().getString(R.string.error), Toast.LENGTH_SHORT).show();
+                    }
+                }
+                countHandler.post(getCount);
+                break;
+            case SELECT_VIDEO:
+                if(resultCode == RESULT_OK){
+                    try {
+                        Uri selectedImage = imageReturnedIntent.getData();
+
+                        String filePath = IOUtils.getPath(selectedImage, context);
+
+                        Bitmap thumbnail = ThumbnailUtils.createVideoThumbnail(filePath,
+                                MediaStore.Images.Thumbnails.MINI_KIND);
+
+                        Log.v("talon_compose_pic", "path to video on sd card: " + filePath);
+
+                        attachImage[0].setImageBitmap(thumbnail);
+                        attachImage[0].setVisibility(View.VISIBLE);
+                        attachedUri[0] = selectedImage.toString();
+                        imagesAttached = 1;
+
+                        attachmentType = "video";
 
                         attachButton.setEnabled(false);
                     } catch (Throwable e) {
@@ -1018,7 +1075,7 @@ public abstract class Compose extends Activity implements
 
                         if (addLocation) {
                             if (waitForLocation()) {
-                                Location location = mLocationClient.getLastLocation();
+                                Location location = mLastLocation;
                                 GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                 helper.setLocation(geolocation);
                             }
@@ -1040,7 +1097,7 @@ public abstract class Compose extends Activity implements
                             waitForLocation();
 
                             if (waitForLocation()) {
-                                Location location = mLocationClient.getLastLocation();
+                                Location location = mLastLocation;
                                 GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                 helper.setLocation(geolocation);
                             }
@@ -1063,7 +1120,7 @@ public abstract class Compose extends Activity implements
                         // Update status
                         if(addLocation) {
                             if (waitForLocation()) {
-                                Location location = mLocationClient.getLastLocation();
+                                Location location = mLastLocation;
                                 GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                 media.setLocation(geolocation);
                             }
@@ -1118,7 +1175,7 @@ public abstract class Compose extends Activity implements
                                 TwitPicHelper helper = new TwitPicHelper(twitter, text, files[0], context);
                                 if (addLocation) {
                                     if (waitForLocation()) {
-                                        Location location = mLocationClient.getLastLocation();
+                                        Location location = mLastLocation;
                                         GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                         media.setLocation(geolocation);
                                     }
@@ -1136,7 +1193,7 @@ public abstract class Compose extends Activity implements
                                 TwitPicHelper helper = new TwitPicHelper(twitter2, text, files[0], context);
                                 if (addLocation) {
                                     if (waitForLocation()) {
-                                        Location location = mLocationClient.getLastLocation();
+                                        Location location = mLastLocation;
                                         GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                         media.setLocation(geolocation);
                                     }
@@ -1165,13 +1222,13 @@ public abstract class Compose extends Activity implements
                                 }
                             } else {
                                 // animated gif
-                                Log.v("talon_compose", "attaching animated gif");
-                                media.setMedia("animated_gif", getContentResolver().openInputStream(Uri.parse(attachedUri[0])));
+                                Log.v("talon_compose", "attaching: " + attachmentType);
+                                media.setMedia(attachmentType, getContentResolver().openInputStream(Uri.parse(attachedUri[0])));
                             }
 
                             if (addLocation) {
                                 if (waitForLocation()) {
-                                    Location location = mLocationClient.getLastLocation();
+                                    Location location = mLastLocation;
                                     GeoLocation geolocation = new GeoLocation(location.getLatitude(), location.getLongitude());
                                     media.setLocation(geolocation);
                                 }
@@ -1245,20 +1302,20 @@ public abstract class Compose extends Activity implements
         }
 
         private boolean waitForLocation() {
-            if (!mLocationClient.isConnected()) {
+            if (mLastLocation == null) {
                 for (int i = 0; i < 5; i++) {
                     try {
                         Thread.sleep(1500);
                     } catch (Exception e) {
 
                     }
-                    if (mLocationClient.isConnected()) {
+                    if (mLastLocation != null) {
                         break;
                     }
                 }
             }
 
-            return mLocationClient.isConnected();
+            return mLastLocation != null;
         }
 
         boolean outofmem = false;

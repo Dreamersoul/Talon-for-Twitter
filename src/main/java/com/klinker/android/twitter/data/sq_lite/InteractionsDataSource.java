@@ -67,6 +67,7 @@ public class InteractionsDataSource {
     public static final int TYPE_FAVORITE = 2;
     public static final int TYPE_MENTION = 3;
     public static final int TYPE_FAV_USER = 4;
+    public static final int TYPE_QUOTED_TWEET = 5;
 
     public InteractionsDataSource(Context context) {
         dbHelper = new InteractionsSQLiteHelper(context);
@@ -185,6 +186,10 @@ public class InteractionsDataSource {
             case TYPE_FOLLOWER:
                 title = "<b>@" + source.getScreenName() + "</b> " + context.getResources().getString(R.string.followed);
                 break;
+            case TYPE_QUOTED_TWEET:
+                title = "<b>@" + source.getScreenName() + "</b> " + context.getResources().getString(R.string.quoted);
+                text = status.getText();
+                break;
         }
 
         values.put(InteractionsSQLiteHelper.COLUMN_ACCOUNT, account);
@@ -224,8 +229,10 @@ public class InteractionsDataSource {
 
                 if (type == TYPE_RETWEET) { // retweet
                     title = x.length + " " + context.getResources().getString(R.string.new_retweets);
-                } else { // favorite
+                } else if (type == TYPE_FAVORITE) { // favorite
                     title = x.length + " " + context.getResources().getString(R.string.new_favorites);
+                } else {
+                    title = x.length + " " + context.getResources().getString(R.string.new_quotes);
                 }
 
                 ContentValues cv = new ContentValues();

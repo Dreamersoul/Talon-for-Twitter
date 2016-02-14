@@ -94,7 +94,10 @@ public class TalonPullNotificationService extends Service {
 
     public boolean thisInstanceOn = true;
 
+    public boolean showNotification;
+
     public ArrayList<Long> ids;
+    public ArrayList<Long> blockedIds;
 
     @Override
     public void onCreate() {
@@ -114,6 +117,7 @@ public class TalonPullNotificationService extends Service {
         sharedPreferences = getSharedPreferences("com.klinker.android.twitter_world_preferences",
                 Context.MODE_WORLD_READABLE + Context.MODE_WORLD_WRITEABLE);
 
+        showNotification = sharedPreferences.getBoolean("show_pull_notification", true);
         pullUnread = sharedPreferences.getInt("pull_unread", 0);
 
         Intent notificationIntent = new Intent(this, MainActivity.class);
@@ -216,25 +220,33 @@ public class TalonPullNotificationService extends Service {
                     Twitter twitter = Utils.getTwitter(mContext, settings);
                     long currCursor = -1;
                     IDs idObject;
-                    int rep = 0;
 
+                    ids = new ArrayList<Long>();
                     do {
                         idObject = twitter.getFriendsIDs(settings.myId, currCursor);
 
                         long[] lIds = idObject.getIDs();
-                        ids = new ArrayList<Long>();
                         for (int i = 0; i < lIds.length; i++) {
                             ids.add(lIds[i]);
                         }
-
-                        rep++;
-                    } while ((currCursor = idObject.getNextCursor()) != 0 && rep < 3);
-
+                    } while ((currCursor = idObject.getNextCursor()) != 0);
                     ids.add(settings.myId);
+
+                    currCursor = -1;
+                    blockedIds = new ArrayList<Long>();
+                    do {
+                        idObject = twitter.getBlocksIDs(currCursor);
+
+                        long[] lIds = idObject.getIDs();
+                        for (int i = 0; i < lIds.length; i++) {
+                            blockedIds.add(lIds[i]);
+                        }
+                    } while ((currCursor = idObject.getNextCursor()) != 0);
 
                     idsLoaded = true;
 
-                    startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
+                    if (showNotification)
+                        startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
 
                     mContext.sendBroadcast(new Intent("com.klinker.android.twitter.START_PUSH"));
                 } catch (Exception e) {
@@ -393,7 +405,8 @@ public class TalonPullNotificationService extends Service {
 
             mBuilder.setContentText(getResources().getString(R.string.new_tweets_upper) + ": " + pullUnread);
 
-            startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
+            if (showNotification)
+                startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
         }
     };
 
@@ -406,7 +419,8 @@ public class TalonPullNotificationService extends Service {
 
             mBuilder.setContentText(getResources().getString(R.string.new_tweets_upper) + ": " + pullUnread);
 
-            startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
+            if (showNotification)
+                startForeground(FOREGROUND_SERVICE_ID, mBuilder.build());
         }
     };
 
@@ -501,7 +515,7 @@ public class TalonPullNotificationService extends Service {
         @Override
         public void onStatus(final Status status) {
 
-            if (!thisInstanceOn) {
+            if (!thisInstanceOn || isUserBlocked(status.getUser().getId())) {
                 return;
             }
 
@@ -626,7 +640,7 @@ public class TalonPullNotificationService extends Service {
         @Override
         public void onFavorite(User source, User target, Status favoritedStatus) {
 
-            if (!thisInstanceOn) {
+            if (!thisInstanceOn || isUserBlocked(source.getId())) {
                 return;
             }
 
@@ -654,6 +668,41 @@ public class TalonPullNotificationService extends Service {
 
                     if(settings.notifications) {
                         NotificationUtils.newInteractions(source, mContext, sharedPreferences, " " + getResources().getString(R.string.favorited));
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void onQuotedTweet(User source, User target, Status status) {
+            if (!thisInstanceOn || isUserBlocked(source.getId())) {
+                return;
+            }
+
+            if(!source.getScreenName().equals(settings.myScreenName) && target.getScreenName().equals(settings.myScreenName)) {
+                AppSettings settings = new AppSettings(mContext);
+
+                Log.v("twitter_stream_push", "onQuote source:@"
+                        + source.getScreenName() + " target:@"
+                        + target.getScreenName() + " @"
+                        + status.getUser().getScreenName() + " - "
+                        + status.getText());
+
+                InteractionsDataSource.getInstance(mContext).updateInteraction(mContext,
+                        source,
+                        status,
+                        sharedPreferences.getInt("current_account", 1),
+                        InteractionsDataSource.TYPE_QUOTED_TWEET);
+
+                sharedPreferences.edit().putBoolean("new_notification", true).commit();
+
+                if (settings.mentionsNot) {
+                    int newQuotes = sharedPreferences.getInt("new_quotes", 0);
+                    newQuotes++;
+                    sharedPreferences.edit().putInt("new_quotes", newQuotes).commit();
+
+                    if(settings.notifications) {
+                        NotificationUtils.newInteractions(source, mContext, sharedPreferences, " " + getResources().getString(R.string.quoted));
                     }
                 }
             }
@@ -711,29 +760,29 @@ public class TalonPullNotificationService extends Service {
                 return;
             }
 
-            //if (!directMessage.getSender().getScreenName().equals(settings.myScreenName)) {
-                Log.v("twitter_stream_push", "onDirectMessage text:"
-                        + directMessage.getText());
+            Log.v("twitter_stream_push", "onDirectMessage text:"
+                    + directMessage.getText());
 
-                AppSettings settings = new AppSettings(mContext);
+            AppSettings settings = new AppSettings(mContext);
 
-                DMDataSource.getInstance(mContext).createDirectMessage(directMessage, sharedPreferences.getInt("current_account", 1));
+            DMDataSource.getInstance(mContext).createDirectMessage(directMessage, sharedPreferences.getInt("current_account", 1));
 
-                int numUnread = sharedPreferences.getInt("dm_unread_" + sharedPreferences.getInt("current_account", 1), 0);
-                numUnread++;
-                sharedPreferences.edit().putInt("dm_unread_" + sharedPreferences.getInt("current_account", 1), numUnread).commit();
-                sharedPreferences.edit().putBoolean("refresh_me_dm", true).commit();
+            int numUnread = sharedPreferences.getInt("dm_unread_" + sharedPreferences.getInt("current_account", 1), 0);
+            numUnread++;
+            sharedPreferences.edit().putInt("dm_unread_" + sharedPreferences.getInt("current_account", 1), numUnread).commit();
+            sharedPreferences.edit().putBoolean("refresh_me_dm", true).commit();
 
 
-                sharedPreferences.edit().putLong("last_direct_message_id_" + sharedPreferences.getInt("current_account", 1), directMessage.getId()).commit();
+            sharedPreferences.edit().putLong("last_direct_message_id_" + sharedPreferences.getInt("current_account", 1), directMessage.getId()).commit();
 
-                if (!directMessage.getSender().getScreenName().equals(settings.myScreenName) &&
-                        settings.notifications &&
-                        settings.dmsNot) {
+            if (!directMessage.getSender().getScreenName().equals(settings.myScreenName) &&
+                    settings.notifications &&
+                    settings.dmsNot) {
 
-                    NotificationUtils.refreshNotification(mContext);
-                }
-            //}
+                NotificationUtils.refreshNotification(mContext);
+            }
+
+            mContext.sendBroadcast(new Intent("com.klinker.android.twitter.NEW_DIRECT_MESSAGE"));
         }
 
         @Override
@@ -777,12 +826,32 @@ public class TalonPullNotificationService extends Service {
         }
 
         @Override
+        public void onUserSuspension(long suspendedUser) {
+
+        }
+
+        @Override
+        public void onUserDeletion(long deletedUser) {
+
+        }
+
+        @Override
         public void onBlock(User source, User blockedUser) {
 
         }
 
         @Override
         public void onUnblock(User source, User unblockedUser) {
+
+        }
+
+        @Override
+        public void onRetweetedRetweet(User user, User user1, Status status) {
+
+        }
+
+        @Override
+        public void onFavoritedRetweet(User user, User user1, Status status) {
 
         }
 
@@ -989,5 +1058,13 @@ public class TalonPullNotificationService extends Service {
         }
 
         return inSampleSize;
+    }
+
+    public boolean isUserBlocked(Long userId) {
+        try {
+            return blockedIds.contains(userId);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

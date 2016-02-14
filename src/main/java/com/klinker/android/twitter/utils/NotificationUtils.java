@@ -80,6 +80,7 @@ public class NotificationUtils {
     public static void refreshNotification(Context context) {
         refreshNotification(context, false);
     }
+
     public static void refreshNotification(Context context, boolean noTimeline) {
         AppSettings settings = AppSettings.getInstance(context);
 
@@ -91,6 +92,7 @@ public class NotificationUtils {
         int[] unreadCounts = getUnreads(context);
 
         int timeline = unreadCounts[0];
+        int realTimelineCount = timeline;
 
         // if they don't want that type of notification, simply set it to zero
         if (!settings.timelineNot || (settings.pushNotifications && settings.liveStreaming) || noTimeline) {
@@ -271,7 +273,7 @@ public class NotificationUtils {
             }
 
             // if there are unread tweets on the timeline, check them for favorite users
-            if (settings.favoriteUserNotifications && timeline > 0) {
+            if (settings.favoriteUserNotifications && realTimelineCount > 0) {
                 favUsersNotification(currentAccount, context);
             }
         }
@@ -1088,6 +1090,7 @@ public class NotificationUtils {
         int newFollowers = sharedPrefs.getInt("new_followers", 0);
         int newRetweets = sharedPrefs.getInt("new_retweets", 0);
         int newFavorites = sharedPrefs.getInt("new_favorites", 0);
+        int newQuotes = sharedPrefs.getInt("new_quotes", 0);
 
         // set title
         if (newFavorites + newRetweets + newFollowers > 1) {
@@ -1119,12 +1122,15 @@ public class NotificationUtils {
         if (newRetweets > 0) {
             types++;
         }
+        if (newQuotes > 0) {
+            types++;
+        }
 
         if (types > 1) {
             icon = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_stat_icon);
         } else {
             if (newFavorites > 0) {
-                icon = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_action_important_dark);
+                icon = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_heart_dark);
             } else if (newRetweets > 0) {
                 icon = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_action_repeat_dark);
             } else {
@@ -1133,7 +1139,7 @@ public class NotificationUtils {
         }
 
         // set shorter text
-        int total = newFavorites + newFollowers + newRetweets;
+        int total = newFavorites + newFollowers + newRetweets + newQuotes;
         if (total > 1) {
             smallText = total + " " + context.getResources().getString(R.string.new_interactions_lower);
         } else {

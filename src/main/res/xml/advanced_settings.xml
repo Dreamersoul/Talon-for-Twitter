@@ -62,13 +62,6 @@
             android:defaultValue="true"
             />
 
-        <CheckBoxPreference
-            android:key="twitpic"
-            android:title="@string/use_twitpic"
-            android:summary="@string/twitpic_summary"
-            android:defaultValue="false"
-            />
-
     </PreferenceCategory>
 
     <PreferenceCategory
@@ -101,11 +94,12 @@
         android:key="advanced_other"
         android:title="@string/other_options" >
 
-        <CheckBoxPreference
-            android:key="prefer_rt"
-            android:title="@string/rt_style_quotes"
-            android:summary="@string/rt_style_quotes_summary"
-            android:defaultValue="false"
+        <ListPreference
+            android:key="quote_style"
+            android:title="@string/quote_style"
+            android:defaultValue="0"
+            android:entries="@array/quote_style"
+            android:entryValues="@array/quote_style_inserted"
             />
 
         <CheckBoxPreference
@@ -120,6 +114,13 @@
             android:title="@string/jumping_workaround"
             android:summary="@string/jumping_workaround_summary"
             android:defaultValue="false"
+            />
+
+        <CheckBoxPreference
+            android:key="fav_rt_multiple_accounts"
+            android:title="@string/fav_rt_multiple_accounts"
+            android:summary="@string/fav_rt_multiple_accounts_summary"
+            android:defaultValue="true"
             />
 
     </PreferenceCategory>

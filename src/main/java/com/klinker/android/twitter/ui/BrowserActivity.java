@@ -120,12 +120,19 @@ public class BrowserActivity extends Activity {
 
         switch (item.getItemId()) {
             case android.R.id.home:
-                onBackPressed();
+                finish();
                 return true;
 
             case R.id.menu_open_web:
                 try {
-                    Uri weburi = Uri.parse(url);
+                    Uri weburi;
+
+                    if (browser != null) {
+                        weburi = Uri.parse(browser.getUrl());
+                    } else { // on plain text
+                        weburi = Uri.parse(url);
+                    }
+
                     Intent launchBrowser = new Intent(Intent.ACTION_VIEW, weburi);
                     startActivity(launchBrowser);
                 } catch (Exception e) {
